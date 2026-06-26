@@ -3,7 +3,7 @@ use realfft::RealFftPlanner;
 use zerocopy::{Immutable, IntoBytes, little_endian::{U16, U32}};
 use std::io::BufWriter;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 #[repr(u32)]
 enum Note {
     C = 261,
@@ -17,7 +17,17 @@ enum Note {
     Ab = 415,
     A = 440,
     Bb = 466,
-    B = 493
+    B = 493,
+}
+
+impl Note {
+    fn freq(self) -> u32 {
+        self as u32
+    }
+
+    fn octave(self, n: u32) -> u32 {
+        self.freq() * (1 << n)
+    }
 }
 
 
@@ -38,7 +48,7 @@ impl FromStr for Note {
             "A" => Ok(Note::A),
             "Bb" => Ok(Note::Bb),
             "B" => Ok(Note::B),
-            _ => Err(format!("Unknown note, please use Db format: {}", s)),
+            _ => Err(format!("Unknown note, please use the flat enharmonic: {}", s)),
         }
     }
 }
@@ -83,17 +93,28 @@ fn main() -> Result<(), std::io::Error> {
     let mut spectrum  = r2c.make_input_vec();
 
     for note in notes {
-        match note.parse::<Note>() {
-            Ok(note) => {
-                println!("adding {:?} to chord", note);
-                spectrum[note as u32 as usize] = (600.).into();
-            }
-            Err(e) => {
-                eprintln!("{}", e);
-                continue
-            }
+
+    let (octave, note_str) = if let Some(rest) = note.strip_prefix('u') {
+            (1, rest)
+        } else {
+            (0, note.as_str())
+        };
+
+    match note_str.parse::<Note>() {
+        Ok(note) => {
+            let freq = note.octave(octave);
+            println!("adding {:?} ({} Hz) to chord", note, freq);
+
+            spectrum[freq as usize] = (600.).into();
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+            continue;
         }
     }
+    }
+
+    
 
     let duration_in_seconds = 10;
     let sample_data_len = AVG_BYTES_PER_SECOND * duration_in_seconds;
