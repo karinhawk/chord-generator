@@ -1,7 +1,39 @@
 use std::{env, io::Write, str::FromStr};
 use realfft::RealFftPlanner;
+use rustfft::num_complex::Complex;
 use zerocopy::{Immutable, IntoBytes, little_endian::{U16, U32}};
 use std::io::BufWriter;
+
+#[derive(Debug, Copy, Clone)]
+enum Wave {
+    SINE,
+    SQUARE,
+    SAW
+}
+
+impl Wave {
+    fn create_wave(self, spectrum: Vec<Complex<f64>>, freq: u32, amplitude: f64, harmonics: u32) -> Vec<Complex<f64>> {
+        match self {
+            Self::SAW => create_sawtooth_frequencies(spectrum, freq, amplitude, harmonics),
+            Self::SINE => create_sine_frequencies(spectrum, freq, amplitude),
+            Self::SQUARE => todo!(),
+        }
+    }
+}
+
+impl FromStr for Wave {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "sine" => Ok(Wave::SINE),
+            "square" => Ok(Wave::SQUARE),
+            "saw" => Ok(Wave::SAW),
+            _ => Err(format!("invalid wave type: {} (use sine, square, or saw)", s)),
+        }
+    }
+}
+
 
 #[derive(Debug, Copy, Clone)]
 #[repr(u32)]
@@ -82,9 +114,39 @@ const SAMPLES_PER_SECOND: u32 = 44100;
 const BITS_PER_SAMPLE: u16 = 16;
 const AVG_BYTES_PER_SECOND: u32 = CHANNELS as u32 * SAMPLES_PER_SECOND * (BITS_PER_SAMPLE / 8) as u32;
 
+fn create_sine_frequencies(mut spectrum: Vec<Complex<f64>>, freq: u32, amplitude: f64) -> Vec<Complex<f64>> {
+    spectrum[freq as usize] = (amplitude).into();
+    spectrum
+}
+
+fn create_sawtooth_frequencies(mut spectrum: Vec<Complex<f64>>, freq: u32, amplitude: f64, harmonics: u32) -> Vec<Complex<f64>> {
+    for harmonic in 1..harmonics {
+        let freq = freq * harmonic;
+        let amplitude = amplitude * (1.0 / harmonic as f64);
+        spectrum[freq as usize] = (Complex::<f64>::from(amplitude)).into();
+    }
+    spectrum
+}
+
 
 fn main() -> Result<(), std::io::Error> {
-    let notes = env::args().skip(1);
+    let mut args = env::args();
+    let _program = args.next();
+    let wave_type: Wave = match args.next() {
+        Some(arg) => match arg.parse() {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("{}", e);
+                std::process::exit(1);
+            }
+        },
+        None => {
+            eprintln!("missing wave type");
+            std::process::exit(1);
+        }
+    };
+
+    let notes = env::args().skip(2);
 
     let length = SAMPLES_PER_SECOND as usize;
     let mut real_planner = RealFftPlanner::<f64>::new();
@@ -102,10 +164,13 @@ fn main() -> Result<(), std::io::Error> {
 
     match note_str.parse::<Note>() {
         Ok(note) => {
+            let wave_type = wave_type.clone();
             let freq = note.octave(octave);
+            let amplitude = 600.;
+            let harmonics= 12;
+            
             println!("adding {:?} ({} Hz) to chord", note, freq);
-
-            spectrum[freq as usize] = (600.).into();
+            spectrum = wave_type.create_wave(spectrum, freq, amplitude, harmonics);
         }
         Err(e) => {
             eprintln!("{}", e);
@@ -114,7 +179,6 @@ fn main() -> Result<(), std::io::Error> {
     }
     }
 
-    
 
     let duration_in_seconds = 10;
     let sample_data_len = AVG_BYTES_PER_SECOND * duration_in_seconds;
