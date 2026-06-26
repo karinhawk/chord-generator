@@ -1,5 +1,6 @@
 use std::{env, io::Write, str::FromStr};
 use realfft::RealFftPlanner;
+use rustfft::num_complex::Complex;
 use zerocopy::{Immutable, IntoBytes, little_endian::{U16, U32}};
 use std::io::BufWriter;
 
@@ -82,6 +83,15 @@ const SAMPLES_PER_SECOND: u32 = 44100;
 const BITS_PER_SAMPLE: u16 = 16;
 const AVG_BYTES_PER_SECOND: u32 = CHANNELS as u32 * SAMPLES_PER_SECOND * (BITS_PER_SAMPLE / 8) as u32;
 
+fn create_sawtooth_frequencies(mut spectrum: Vec<Complex<f64>>, freq: u32, amplitude: f64, harmonics: u32) -> Vec<Complex<f64>> {
+    for harmonic in 1..harmonics {
+        let freq = freq * harmonic;
+        let amplitude = amplitude * (1.0 / harmonic as f64);
+        spectrum[freq as usize] = (Complex::<f64>::from(amplitude)).into();
+    }
+    spectrum
+}
+
 
 fn main() -> Result<(), std::io::Error> {
     let notes = env::args().skip(1);
@@ -100,18 +110,19 @@ fn main() -> Result<(), std::io::Error> {
             (0, note.as_str())
         };
 
-    match note_str.parse::<Note>() {
-        Ok(note) => {
-            let freq = note.octave(octave);
-            println!("adding {:?} ({} Hz) to chord", note, freq);
-
-            spectrum[freq as usize] = (600.).into();
+        match note_str.parse::<Note>() {
+            Ok(note) => {
+                let freq = note.octave(octave);
+                let amplitude = 600.;
+                let harmonics = 14;
+                println!("adding {:?} ({} Hz) to chord", note, freq);
+                spectrum = create_sawtooth_frequencies(spectrum, freq, amplitude, harmonics);
+            }
+            Err(e) => {
+                eprintln!("{}", e);
+                continue;
+            }
         }
-        Err(e) => {
-            eprintln!("{}", e);
-            continue;
-        }
-    }
     }
 
     
