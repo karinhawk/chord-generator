@@ -179,7 +179,13 @@ fn main() -> Result<(), std::io::Error> {
             let wave_type = wave_type.clone();
             let freq = note.octave(octave);
             let amplitude = 600.;
-            let harmonics= 12;
+            let harmonics;
+
+            harmonics = match wave_type {
+                Wave::SAW => 14,
+                Wave::SQUARE => 40,
+                Wave::SINE => 1
+            };
             
             println!("adding {:?} ({} Hz) to chord", note, freq);
             spectrum = wave_type.create_wave(spectrum, freq, amplitude, harmonics);
