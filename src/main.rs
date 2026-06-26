@@ -16,7 +16,7 @@ impl Wave {
         match self {
             Self::SAW => create_sawtooth_frequencies(spectrum, freq, amplitude, harmonics),
             Self::SINE => create_sine_frequencies(spectrum, freq, amplitude),
-            Self::SQUARE => todo!(),
+            Self::SQUARE => create_square_frequencies(spectrum, freq, amplitude, harmonics),
         }
     }
 }
@@ -121,6 +121,18 @@ fn create_sine_frequencies(mut spectrum: Vec<Complex<f64>>, freq: u32, amplitude
 
 fn create_sawtooth_frequencies(mut spectrum: Vec<Complex<f64>>, freq: u32, amplitude: f64, harmonics: u32) -> Vec<Complex<f64>> {
     for harmonic in 1..harmonics {
+        let freq = freq * harmonic;
+        let amplitude = amplitude * (1.0 / harmonic as f64);
+        spectrum[freq as usize] = (Complex::<f64>::from(amplitude)).into();
+    }
+    spectrum
+}
+
+fn create_square_frequencies(mut spectrum: Vec<Complex<f64>>, freq: u32, amplitude: f64, harmonics: u32) -> Vec<Complex<f64>> {
+    for harmonic in 1..harmonics {
+        if harmonic % 2 == 0 {
+            continue;
+        }
         let freq = freq * harmonic;
         let amplitude = amplitude * (1.0 / harmonic as f64);
         spectrum[freq as usize] = (Complex::<f64>::from(amplitude)).into();
