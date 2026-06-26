@@ -73,10 +73,6 @@ const BITS_PER_SAMPLE: u16 = 16;
 const AVG_BYTES_PER_SECOND: u32 = CHANNELS as u32 * SAMPLES_PER_SECOND * (BITS_PER_SAMPLE / 8) as u32;
 
 
-// take in n amount of args (maybe 4 max)
-// then for each arg, put it in a vec and then for each loop through this program (maybe make a func)
-
-
 fn main() -> Result<(), std::io::Error> {
     let notes = env::args().skip(1);
 
