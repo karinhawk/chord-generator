@@ -1,4 +1,4 @@
-use std::{io::Write, str::FromStr};
+use std::{io::Write, println, process::exit, str::FromStr};
 use clap::{Parser, Subcommand, ValueEnum};
 use realfft::RealFftPlanner;
 use rustfft::num_complex::Complex;
@@ -27,7 +27,28 @@ enum Commands {
 
         /// Notes to include in the chord
         #[arg(required=true)]
-        notes: Vec<String>
+        notes: Vec<String>,
+
+        /// Duration of the chord in seconds
+        #[arg(short, long)]
+        duration: f64,
+    },
+
+    Morph {
+        #[arg(value_enum)]
+        wave: Wave,
+
+        /// Notes in the starting chord
+        #[arg(required = true)]
+        from: Vec<String>,
+
+        /// Notes in the destination chord
+        #[arg(long, required = true, num_args = 1..)]
+        to: Vec<String>,
+
+        /// Duration of the morph in seconds
+        #[arg(short, long)]
+        duration: f64,
     }
 }
 
@@ -41,17 +62,17 @@ enum Wave {
 impl Wave {
     fn create_wave(
         self,
-        mut spectrum: Vec<Complex<f64>>,
+        spectrum: &mut [Complex<f64>],
         freq: u32,
         amplitude: f64,
         harmonics: u32,
-    ) -> Vec<Complex<f64>> {
+    ) {
         match self {
             Self::Sine => {
-                add_frequency(&mut spectrum, freq.into(), amplitude)
+                add_frequency(spectrum, freq.into(), amplitude)
             }
-            Self::Saw => add_harmonics(&mut spectrum, freq.into(), amplitude, harmonics, false),
-            Self::Square => add_harmonics(&mut spectrum, freq.into(), amplitude, harmonics, true)
+            Self::Saw => add_harmonics(spectrum, freq.into(), amplitude, harmonics, false),
+            Self::Square => add_harmonics(spectrum, freq.into(), amplitude, harmonics, true)
         }
     }
 }
@@ -108,6 +129,11 @@ impl FromStr for Note {
     }
 }
 
+struct MorphNote {
+    start_freq: f64,
+    end_freq: f64
+}
+
 #[derive(IntoBytes, Immutable)]
 #[repr(u16)]
 enum WaveFormatCategory {
@@ -146,8 +172,13 @@ fn add_frequency(
     spectrum: &mut [Complex<f64>],
     freq: f64,
     amplitude: f64
-) -> Vec<Complex<f64>> {
+) {
     let lower = freq.floor() as usize;
+
+    if lower >= spectrum.len() {
+        return;
+    }
+
     let upper = lower + 1;
 
     let upper_amount = freq - lower as f64;
@@ -158,8 +189,6 @@ fn add_frequency(
     if upper < spectrum.len() {
         spectrum[upper] += Complex::from(amplitude * upper_amount);
     }
-
-    spectrum.to_vec()
 }
 
 fn add_harmonics(
@@ -168,7 +197,7 @@ fn add_harmonics(
     amplitude: f64,
     harmonics: u32,
     square: bool,
-) -> Vec<Complex<f64>> {
+) {
     for harmonic in 1..harmonics {
         if square && harmonic % 2 == 0 {
             continue;
@@ -184,21 +213,214 @@ fn add_harmonics(
             harmonic_amplitude,
         );
     }
-
-    spectrum.to_vec()
 }
 
-// fn morph(wave_type: Wave, notes: Vec<String>, notes_: Vec<String>, duration: u32) -> Result<(), std::io::Error> {
-//     // map first of each in list and so on
-//     let length = SAMPLES_PER_SECOND as usize;
+fn note_to_frequency(note: &str) -> Result<u32, String> {
+    let (octave, note_str) =
+        if let Some(stripped_note) = note.strip_prefix('u') {
+            (1, stripped_note)
+        } else {
+            (0, note)
+        };
 
-//     let mut real_planner = RealFftPlanner::<f64>::new();
-//     let r2c = real_planner.plan_fft_inverse(length);
-//     let mut spectrum = r2c.make_input_vec();
+    let note = note_str.parse::<Note>()?;
 
-// };
+    Ok(note.octave(octave))
+}
 
-fn generate(wave_type: Wave, notes: Vec<String>) -> Result<(), std::io::Error> {
+fn morph(
+    wave_type: Wave,
+    from_notes: Vec<String>,
+    to_notes: Vec<String>,
+    duration: f64,
+) -> Result<(), std::io::Error> {
+
+    if from_notes.len() != to_notes.len() {
+        eprintln!(
+            "The starting and destination chords must contain \
+             the same number of notes"
+        );
+        exit(1);
+    }
+
+    if from_notes.is_empty() {
+        eprintln!("Both chords must contain at least one note");
+        exit(1);
+    }
+
+    if duration <= 0.0 {
+        eprintln!("Duration must be greater than 0 seconds");
+        exit(1);
+    }
+
+    let notes: Vec<MorphNote> = from_notes
+        .iter()
+        .zip(to_notes.iter())
+        .map(|(from, to)| {
+            let start_freq = note_to_frequency(from)
+                .map_err(|e| std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    e,
+                ))?;
+
+            let end_freq = note_to_frequency(to)
+                .map_err(|e| std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    e,
+                ))?;
+
+            Ok(MorphNote {
+                start_freq: start_freq as f64,
+                end_freq: end_freq as f64,
+            })
+        })
+        .collect::<Result<Vec<_>, std::io::Error>>()?;
+
+    println!("Morphing:");
+
+    for note in &notes {
+        println!(
+            "{} Hz → {} Hz",
+            note.start_freq,
+            note.end_freq
+        );
+    }
+
+    let total_samples =
+        (SAMPLES_PER_SECOND as f64 * duration) as usize;
+
+    let sample_data_len =
+        (total_samples * std::mem::size_of::<i16>()) as u32;
+
+    let format = FormatChunkCommon {
+        format_tag: WaveFormatCategory::Pcm,
+        channels: CHANNELS.into(),
+        samples_per_sec: SAMPLES_PER_SECOND.into(),
+        avg_bytes_per_sec: AVG_BYTES_PER_SECOND.into(),
+        block_align: (CHANNELS * BITS_PER_SAMPLE / 8).into(),
+        format_specific: FormatChunkPcm {
+            bits_per_sample: BITS_PER_SAMPLE.into(),
+        },
+    };
+
+    let out = std::fs::File::create("audio.wav")?;
+    let mut out = BufWriter::new(out);
+
+    out.write_all(b"RIFF")?;
+
+    out.write_all(
+        &(sample_data_len
+            + 3 * 4
+            + std::mem::size_of_val(&format) as u32)
+            .to_le_bytes(),
+    )?;
+
+    out.write_all(b"WAVE")?;
+
+    write_chunk(b"fmt ", format, &mut out)?;
+
+    out.write_all(b"data")?;
+    out.write_all(&sample_data_len.to_le_bytes())?;
+
+    let amplitude = 600.0;
+
+    let harmonics = match wave_type {
+        Wave::Saw => 14,
+        Wave::Square => 40,
+        Wave::Sine => 1,
+    };
+
+    let mut phases = vec![0.0; notes.len()];
+
+    for sample_index in 0..total_samples {
+
+        let progress =
+            sample_index as f64 / (total_samples - 1) as f64;
+
+        let mut sample = 0.0;
+
+        for (note_index, note) in notes.iter().enumerate() {
+            let frequency =
+                note.start_freq
+                    + (note.end_freq - note.start_freq) * progress;
+
+            let phase_increment =
+                frequency / SAMPLES_PER_SECOND as f64;
+
+            let value = match wave_type {
+                Wave::Sine => {
+                    (phases[note_index]
+                        * std::f64::consts::TAU)
+                        .sin()
+                }
+
+                Wave::Square => {
+                    let mut value = 0.0;
+
+                    for harmonic in 1..=harmonics {
+                        if harmonic % 2 == 0 {
+                            continue;
+                        }
+
+                        let harmonic_phase =
+                            phases[note_index]
+                                * harmonic as f64;
+
+                        value +=
+                            harmonic_phase
+                                .sin()
+                                / harmonic as f64;
+                    }
+
+                    value
+                }
+
+                Wave::Saw => {
+                    let mut value = 0.0;
+
+                    for harmonic in 1..=harmonics {
+                        let harmonic_phase =
+                            phases[note_index]
+                                * harmonic as f64;
+
+                        value +=
+                            harmonic_phase
+                                .sin()
+                                / harmonic as f64;
+                    }
+
+                    value
+                }
+            };
+
+            sample += value * amplitude;
+
+            phases[note_index] += phase_increment;
+
+            if phases[note_index] >= 1.0 {
+                phases[note_index] -=
+                    phases[note_index].floor();
+            }
+        }
+
+        let sample = sample
+            .clamp(i16::MIN as f64, i16::MAX as f64)
+            as i16;
+
+        out.write_all(&sample.to_le_bytes())?;
+    }
+
+    out.flush()?;
+
+    println!(
+        "generated {} second morph WAV file",
+        duration
+    );
+
+    Ok(())
+}
+
+fn generate(wave_type: Wave, notes: Vec<String>, duration: f64) -> Result<(), std::io::Error> {
     let length = SAMPLES_PER_SECOND as usize;
 
     let mut real_planner = RealFftPlanner::<f64>::new();
@@ -207,8 +429,8 @@ fn generate(wave_type: Wave, notes: Vec<String>) -> Result<(), std::io::Error> {
 
     for note in notes {
         let (octave, note_str) =
-            if let Some(rest) = note.strip_prefix('u') {
-                (1, rest)
+            if let Some(stripped_note) = note.strip_prefix('u') {
+                (1, stripped_note)
             } else {
                 (0, note.as_str())
             };
@@ -229,8 +451,8 @@ fn generate(wave_type: Wave, notes: Vec<String>) -> Result<(), std::io::Error> {
                     note, freq
                 );
 
-                spectrum = wave_type.create_wave(
-                    spectrum,
+                wave_type.create_wave(
+                    &mut spectrum,
                     freq,
                     amplitude,
                     harmonics,
@@ -244,9 +466,8 @@ fn generate(wave_type: Wave, notes: Vec<String>) -> Result<(), std::io::Error> {
         }
     }
 
-    let duration_in_seconds = 10;
-    let sample_data_len =
-        AVG_BYTES_PER_SECOND * duration_in_seconds;
+    let sample_data_len=
+        AVG_BYTES_PER_SECOND * duration as u32;
 
     let format = FormatChunkCommon {
         format_tag: WaveFormatCategory::Pcm,
@@ -287,7 +508,7 @@ fn generate(wave_type: Wave, notes: Vec<String>) -> Result<(), std::io::Error> {
 
     let mut dampen = -1.0;
 
-    for _interval in 0..duration_in_seconds {
+    for _interval in 0..duration as u32 {
         for sample in &time {
             let amplitude = sample.round();
             let amplitude = amplitude + amplitude * dampen;
@@ -313,8 +534,11 @@ fn main() -> Result<(), std::io::Error> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Generate { wave, notes } => {
-            generate(wave, notes)?;
+        Commands::Generate { wave, notes, duration } => {
+            generate(wave, notes, duration)?;
+        },
+        Commands::Morph { wave, from, to, duration } => {
+            morph(wave, from, to, duration)?;
         }
     }
 
