@@ -41,27 +41,17 @@ enum Wave {
 impl Wave {
     fn create_wave(
         self,
-        spectrum: Vec<Complex<f64>>,
+        mut spectrum: Vec<Complex<f64>>,
         freq: u32,
         amplitude: f64,
         harmonics: u32,
     ) -> Vec<Complex<f64>> {
         match self {
-            Self::Saw => create_sawtooth_frequencies(
-                spectrum,
-                freq,
-                amplitude,
-                harmonics,
-            ),
             Self::Sine => {
-                create_sine_frequencies(spectrum, freq, amplitude)
+                add_frequency(&mut spectrum, freq.into(), amplitude)
             }
-            Self::Square => create_square_frequencies(
-                spectrum,
-                freq,
-                amplitude,
-                harmonics,
-            ),
+            Self::Saw => add_harmonics(&mut spectrum, freq.into(), amplitude, harmonics, false),
+            Self::Square => add_harmonics(&mut spectrum, freq.into(), amplitude, harmonics, true)
         }
     }
 }
@@ -111,7 +101,7 @@ impl FromStr for Note {
             "Bb" => Ok(Note::Bb),
             "B" => Ok(Note::B),
             _ => Err(format!(
-                "Unknown note, please use the flat enharmonic: {}",
+                "Unknown note: {}; please use the flat enharmonic",
                 s
             )),
         }
@@ -150,52 +140,63 @@ const AVG_BYTES_PER_SECOND: u32 =
         * SAMPLES_PER_SECOND
         * (BITS_PER_SAMPLE / 8) as u32;
 
-fn create_sine_frequencies(
-    mut spectrum: Vec<Complex<f64>>,
-    freq: u32,
-    amplitude: f64,
+/// when we morph, we will dealing with floats basically so we need a way to normalise those
+/// so they work with the type Complex is expecting
+fn add_frequency(
+    spectrum: &mut [Complex<f64>],
+    freq: f64,
+    amplitude: f64
 ) -> Vec<Complex<f64>> {
-    spectrum[freq as usize] = amplitude.into();
-    spectrum
-}
+    let lower = freq.floor() as usize;
+    let upper = lower + 1;
 
-fn create_sawtooth_frequencies(
-    mut spectrum: Vec<Complex<f64>>,
-    freq: u32,
-    amplitude: f64,
-    harmonics: u32,
-) -> Vec<Complex<f64>> {
-    for harmonic in 1..harmonics {
-        let freq = freq * harmonic;
-        let amplitude = amplitude * (1.0 / harmonic as f64);
+    let upper_amount = freq - lower as f64;
+    let lower_amount = 1.0 - upper_amount;
 
-        spectrum[freq as usize] =
-            Complex::<f64>::from(amplitude);
+    spectrum[lower] += Complex::from(amplitude * lower_amount);
+
+    if upper < spectrum.len() {
+        spectrum[upper] += Complex::from(amplitude * upper_amount);
     }
 
-    spectrum
+    spectrum.to_vec()
 }
 
-fn create_square_frequencies(
-    mut spectrum: Vec<Complex<f64>>,
-    freq: u32,
+fn add_harmonics(
+    spectrum: &mut [Complex<f64>],
+    freq: f64,
     amplitude: f64,
     harmonics: u32,
+    square: bool,
 ) -> Vec<Complex<f64>> {
     for harmonic in 1..harmonics {
-        if harmonic % 2 == 0 {
+        if square && harmonic % 2 == 0 {
             continue;
         }
 
-        let freq = freq * harmonic;
-        let amplitude = amplitude * (1.0 / harmonic as f64);
+        let harmonic_freq = freq * harmonic as f64;
+        let harmonic_amplitude =
+            amplitude / harmonic as f64;
 
-        spectrum[freq as usize] =
-            Complex::<f64>::from(amplitude);
+        add_frequency(
+            spectrum,
+            harmonic_freq,
+            harmonic_amplitude,
+        );
     }
 
-    spectrum
+    spectrum.to_vec()
 }
+
+// fn morph(wave_type: Wave, notes: Vec<String>, notes_: Vec<String>, duration: u32) -> Result<(), std::io::Error> {
+//     // map first of each in list and so on
+//     let length = SAMPLES_PER_SECOND as usize;
+
+//     let mut real_planner = RealFftPlanner::<f64>::new();
+//     let r2c = real_planner.plan_fft_inverse(length);
+//     let mut spectrum = r2c.make_input_vec();
+
+// };
 
 fn generate(wave_type: Wave, notes: Vec<String>) -> Result<(), std::io::Error> {
     let length = SAMPLES_PER_SECOND as usize;
