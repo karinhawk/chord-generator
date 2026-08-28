@@ -1,5 +1,5 @@
 use std::{io::Write, str::FromStr};
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use realfft::RealFftPlanner;
 use rustfft::num_complex::Complex;
 use zerocopy::{
@@ -31,11 +31,11 @@ enum Commands {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, ValueEnum)]
 enum Wave {
-    SINE,
-    SQUARE,
-    SAW,
+    Sine,
+    Square,
+    Saw,
 }
 
 impl Wave {
@@ -47,37 +47,21 @@ impl Wave {
         harmonics: u32,
     ) -> Vec<Complex<f64>> {
         match self {
-            Self::SAW => create_sawtooth_frequencies(
+            Self::Saw => create_sawtooth_frequencies(
                 spectrum,
                 freq,
                 amplitude,
                 harmonics,
             ),
-            Self::SINE => {
+            Self::Sine => {
                 create_sine_frequencies(spectrum, freq, amplitude)
             }
-            Self::SQUARE => create_square_frequencies(
+            Self::Square => create_square_frequencies(
                 spectrum,
                 freq,
                 amplitude,
                 harmonics,
             ),
-        }
-    }
-}
-
-impl FromStr for Wave {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "sine" => Ok(Wave::SINE),
-            "square" => Ok(Wave::SQUARE),
-            "saw" => Ok(Wave::SAW),
-            _ => Err(format!(
-                "invalid wave type: {} (use sine, square, or saw)",
-                s
-            )),
         }
     }
 }
@@ -234,9 +218,9 @@ fn generate(wave_type: Wave, notes: Vec<String>) -> Result<(), std::io::Error> {
                 let amplitude = 600.0;
 
                 let harmonics = match wave_type {
-                    Wave::SAW => 14,
-                    Wave::SQUARE => 40,
-                    Wave::SINE => 1,
+                    Wave::Saw => 14,
+                    Wave::Square => 40,
+                    Wave::Sine => 1,
                 };
 
                 println!(
