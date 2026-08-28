@@ -10,6 +10,14 @@ The user must specify the wave format used: sine, saw, or square.
 
 `cargo install --path .`
 
+### Wave types
+
+`chord-generator generate sine Bb D F`
+
+`chord-generator generate saw Bb D F`
+
+`chord-generator generate square Bb D F`
+
 ### Generate a chord
 
 The `generate` command has the capability to build chords from C4 to C5 (chromatically inclusive).
@@ -30,10 +38,6 @@ The user can specify whether they would like the note built from middle C (C4) a
 
 ![Piano diagram with the notes F, Ab, C, and Eb highlighted](assets/fabceb.png)
 
-### Wave types
+### Morph between two chords
 
-`chord-generator generate sine Bb D F`
-
-`chord-generator generate saw Bb D F`
-
-`chord-generator generate square Bb D F`
+`chord-generator morph square Db uE Ab Gb --to F uA uG Eb --duration 10`
