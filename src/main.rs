@@ -1,5 +1,5 @@
-use std::{env, io::Write, str::FromStr};
-
+use std::{io::Write, str::FromStr};
+use clap::{Parser, Subcommand};
 use realfft::RealFftPlanner;
 use rustfft::num_complex::Complex;
 use zerocopy::{
@@ -8,6 +8,28 @@ use zerocopy::{
     little_endian::{U16, U32},
 };
 use std::io::BufWriter;
+
+#[derive(Debug, Parser)]
+#[command(name = "chords")]
+#[command(about = "Generate and manipulate chords")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Debug, Subcommand)]
+enum Commands {
+    /// Generate a chord
+    Generate {
+        /// Waveform used to generate
+        #[arg(value_enum)]
+        wave: Wave,
+
+        /// Notes to include in the chord
+        #[arg(required=true)]
+        notes: Vec<String>
+    }
+}
 
 #[derive(Debug, Copy, Clone)]
 enum Wave {
@@ -302,73 +324,12 @@ fn generate(wave_type: Wave, notes: Vec<String>) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-fn print_usage() {
-    eprintln!(
-        r#"Usage:
-    chord-generator generate <wave> <notes...>
-
-Examples:
-    chord-generator generate sine C E G
-    chord-generator generate square C E G
-    chord-generator generate saw C E G
-    chord-generator generate sine C uE G
-
-Wave types:
-    sine
-    square
-    saw
-
-Notes:
-    C Db D Eb E F Gb G Ab A Bb B
-
-Prefix a note with 'u' to play it one octave higher.
-"#
-    );
-}
-
 fn main() -> Result<(), std::io::Error> {
-    let mut args = env::args().skip(1);
+    let cli = Cli::parse();
 
-    let Some(command) = args.next() else {
-        print_usage();
-        return Ok(());
-    };
-
-    match command.as_str() {
-        "generate" => {
-            let Some(wave_type) = args.next() else {
-                eprintln!("missing wave type");
-                print_usage();
-                std::process::exit(1);
-            };
-
-            let wave_type: Wave = match wave_type.parse() {
-                Ok(wave) => wave,
-                Err(e) => {
-                    eprintln!("{}", e);
-                    std::process::exit(1);
-                }
-            };
-
-            let notes: Vec<String> = args.collect();
-
-            if notes.is_empty() {
-                eprintln!("missing notes");
-                print_usage();
-                std::process::exit(1);
-            }
-
-            generate(wave_type, notes)?;
-        }
-
-        "help" | "--help" | "-h" => {
-            print_usage();
-        }
-
-        unknown => {
-            eprintln!("unknown command: {}", unknown);
-            print_usage();
-            std::process::exit(1);
+    match cli.command {
+        Commands::Generate { wave, notes } => {
+            generate(wave, notes)?;
         }
     }
 
