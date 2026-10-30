@@ -1,6 +1,6 @@
 use std::{io::Write, process::exit};
 
-use crate::{note::MorphNote, note_to_frequency, wav::{SAMPLES_PER_SECOND, create_wav_buffer}, wave::Wave};
+use crate::{note::{MorphNote, note_to_frequency}, wav::{SAMPLES_PER_SECOND, create_wav_buffer}, wave::Wave};
 
 pub fn morph(
     wave_type: Wave,
@@ -66,13 +66,9 @@ pub fn morph(
 
     let amplitude = 600.0;
 
-    let harmonics = match wave_type {
-        Wave::Saw => 14,
-        Wave::Square => 40,
-        Wave::Sine => 1,
-    };
-
     let mut phases = vec![0.0; notes.len()];
+
+    let harmonics = wave_type.harmonics();
 
     for sample_index in 0..total_samples {
 

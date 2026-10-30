@@ -1,11 +1,14 @@
+use std::println;
 use clap::ValueEnum;
+use serde::Deserialize;
 use rustfft::num_complex::Complex;
 
-#[derive(Debug, Copy, Clone, ValueEnum)]
+#[derive(Debug, Copy, Clone, ValueEnum, Deserialize)]
 pub enum Wave {
     Sine,
     Square,
     Saw,
+    Random
 }
 
 impl Wave {
@@ -21,7 +24,8 @@ impl Wave {
                 Self::add_frequency(spectrum, freq.into(), amplitude)
             }
             Self::Saw => Self::add_harmonics(spectrum, freq.into(), amplitude, harmonics, false),
-            Self::Square => Self::add_harmonics(spectrum, freq.into(), amplitude, harmonics, true)
+            Self::Square => Self::add_harmonics(spectrum, freq.into(), amplitude, harmonics, true),
+            Self::Random => Self::add_harmonics(spectrum, freq.into(), amplitude, harmonics, true)
         }
     }
 
@@ -30,6 +34,11 @@ impl Wave {
             Wave::Sine => 1,
             Wave::Square => 40,
             Wave::Saw => 14,
+            Wave::Random => {
+                let harmonics = rand::random_range(1..80);
+                println!("using {} harmonics", harmonics);
+                harmonics
+            }
         }
     }
 
@@ -61,6 +70,10 @@ impl Wave {
                 }
 
                 value
+            }
+
+            Wave::Random => {
+                (phase * std::f64::consts::TAU).sin()
             }
         }}
 

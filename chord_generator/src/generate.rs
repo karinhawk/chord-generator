@@ -2,7 +2,7 @@ use std::io::Write;
 
 use realfft::RealFftPlanner;
 
-use crate::{note_to_frequency, wav::{AVG_BYTES_PER_SECOND, SAMPLES_PER_SECOND, create_wav_buffer}, wave::Wave};
+use crate::{wav::{AVG_BYTES_PER_SECOND, SAMPLES_PER_SECOND, create_wav_buffer}, wave::Wave, note::note_to_frequency};
 
 pub fn generate(wave_type: Wave, notes: Vec<String>, duration: f64) -> Result<(), std::io::Error> {
     let length = SAMPLES_PER_SECOND as usize;

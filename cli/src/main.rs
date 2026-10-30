@@ -1,12 +1,7 @@
-mod morph;
-mod generate;
-mod wave;
-mod note;
-mod wav;
-
+use chord_generator::wave::Wave;
+use chord_generator::generate::generate;
+use chord_generator::morph::morph;
 use clap::{Parser, Subcommand};
-
-use crate::{note::Note, wave::Wave, morph::morph, generate::generate};
 
 #[derive(Debug, Parser)]
 #[command(name = "chords")]
@@ -49,19 +44,6 @@ enum Commands {
         #[arg(short, long)]
         duration: f64,
     }
-}
-
-fn note_to_frequency(note: &str) -> Result<u32, String> {
-    let (octave, note_str) =
-        if let Some(stripped_note) = note.strip_prefix('u') {
-            (1, stripped_note)
-        } else {
-            (0, note)
-        };
-
-    let note = note_str.parse::<Note>()?;
-
-    Ok(note.octave(octave))
 }
 
 fn main() -> Result<(), std::io::Error> {

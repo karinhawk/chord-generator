@@ -56,3 +56,16 @@ pub struct MorphNote {
     pub start_freq: f64,
     pub end_freq: f64
 }
+
+pub fn note_to_frequency(note: &str) -> Result<u32, String> {
+    let (octave, note_str) =
+        if let Some(stripped_note) = note.strip_prefix('u') {
+            (1, stripped_note)
+        } else {
+            (0, note)
+        };
+
+    let note = note_str.parse::<Note>()?;
+
+    Ok(note.octave(octave))
+}
